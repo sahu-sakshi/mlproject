@@ -9,7 +9,7 @@ import re
 class FakeNewsDatasetLoader:
     """Load and preprocess multiple fake news datasets."""
     
-    def __init__(self, dataset_dir: str = "dataset"):
+    def __init__(self, dataset_dir: str = "../../dataset"):
         self.dataset_dir = Path(dataset_dir)
         self.datasets = {}
         
