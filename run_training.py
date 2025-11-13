@@ -659,17 +659,49 @@ def main():
     # Step 1: Load data
     loader = FakeNewsDatasetLoader(dataset_dir=args.dataset_dir)
     combined_df = loader.load_all_datasets()
-    train_df, val_df, test_df = loader.create_splits(
-        combined_df, 
-        test_size=args.test_size,
-        val_size=args.val_size
-    )
-    
+
+    # ✅ Use pre-saved splits if available
+    from pathlib import Path
+    splits_dir = Path(args.dataset_dir) / "splits"
+    train_path = splits_dir / "train.csv"
+    val_path   = splits_dir / "val.csv"
+    test_path  = splits_dir / "test.csv"
+
+    if train_path.exists() and val_path.exists() and test_path.exists():
+        print("\nFound saved stratified splits ✅ Using dataset/splits/")
+        train_df = pd.read_csv(train_path)
+        val_df   = pd.read_csv(val_path)
+        test_df  = pd.read_csv(test_path)
+    else:
+        print("\nNo saved splits found. Creating new splits...")
+        train_df, val_df, test_df = loader.create_splits(
+            combined_df,
+            test_size=args.test_size,
+            val_size=args.val_size
+        )
+
+    # ✅ Normalize labels (convert real/fake → 0/1 safely)
+    def normalize_label(x):
+        x = str(x).strip().lower()
+        if x in ["real", "0"]:
+            return 0
+        if x in ["fake", "1"]:
+            return 1
+        raise ValueError(f"Unknown label value: {x}")
+
+    for df in [train_df, val_df, test_df]:
+        df["label"] = df["label"].apply(normalize_label)
+
+    for df in [train_df, val_df, test_df]:
+        if "domain" not in df.columns:
+            df["domain"] = "unknown"
+
     # Step 2: Initialize tokenizer
     print("\n" + "=" * 70)
     print(f"Loading tokenizer: {args.model_name}")
     print("=" * 70)
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+
     
     # Step 3: Create datasets
     print("\nCreating PyTorch datasets...")
