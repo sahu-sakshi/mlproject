@@ -11,7 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train fake news detection model")
     
     # Data arguments
-    parser.add_argument('--dataset_dir', type=str, default='dataset', help='Dataset directory')
+    parser.add_argument('--dataset_dir', type=str, default='../../dataset', help='Dataset directory (relative to model folder)')
     parser.add_argument('--test_size', type=float, default=0.2, help='Test set size')
     parser.add_argument('--val_size', type=float, default=0.1, help='Validation set size')
     
@@ -46,7 +46,7 @@ def main():
     parser.add_argument('--gradient_accumulation_steps', type=int, default=2, help='Gradient accumulation steps')
     
     # Output arguments
-    parser.add_argument('--output_dir', type=str, default='output', help='Output directory')
+    parser.add_argument('--output_dir', type=str, default='output', help='Output directory (relative to model folder)')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     
     args = parser.parse_args()
