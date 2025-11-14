@@ -16,10 +16,44 @@ import torch
 from sklearn.metrics import accuracy_score, f1_score
 import os
 from pathlib import Path
+from datetime import datetime
+import sys
+import json
 
 # Set random seeds for reproducibility
 np.random.seed(42)
 torch.manual_seed(42)
+
+# ============================================================================
+# Output File Setup
+# ============================================================================
+
+class Tee:
+    """Class to write output to both console and file."""
+    def __init__(self, *files):
+        self.files = files
+    
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+            f.flush()
+    
+    def flush(self):
+        for f in self.files:
+            f.flush()
+
+def setup_output_file():
+    """Create output file with timestamp and return file handle."""
+    output_dir = Path(__file__).parent
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = output_dir / f"training_output_{timestamp}.txt"
+    
+    f = open(output_file, 'w', encoding='utf-8')
+    f.write(f"mDeBERTa-v3 Fake News Detection - Training Output\n")
+    f.write(f"Training started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    f.write("=" * 70 + "\n\n")
+    
+    return f, output_file
 
 # ============================================================================
 # STEP 1: Load and Preprocess Datasets
@@ -197,14 +231,102 @@ def compute_metrics(eval_pred):
 # STEP 4: Main Training Function
 # ============================================================================
 
+def save_results_to_markdown(results_dict, output_path):
+    """Save training results to a markdown file."""
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write("# mDeBERTa-v3 Fake News Detection - Training Results\n\n")
+        f.write(f"**Training Date:** {results_dict.get('training_date', 'N/A')}\n\n")
+        
+        f.write("## Model Information\n\n")
+        f.write(f"- **Base Model:** {results_dict.get('model_name', 'N/A')}\n")
+        f.write(f"- **Task:** Binary Classification (Fake/True News)\n")
+        f.write(f"- **Languages:** Kannada, English\n\n")
+        
+        f.write("## Dataset Information\n\n")
+        dataset_info = results_dict.get('dataset_info', {})
+        f.write(f"- **Total Samples:** {dataset_info.get('total_samples', 'N/A')}\n")
+        f.write(f"- **Kannada Samples:** {dataset_info.get('kannada_samples', 'N/A')}\n")
+        f.write(f"- **English Samples:** {dataset_info.get('english_samples', 'N/A')}\n")
+        f.write(f"- **Fake News Samples:** {dataset_info.get('fake_samples', 'N/A')}\n")
+        f.write(f"- **True News Samples:** {dataset_info.get('true_samples', 'N/A')}\n")
+        f.write(f"- **Train Set:** {dataset_info.get('train_samples', 'N/A')} ({dataset_info.get('train_percentage', 'N/A')}%)\n")
+        f.write(f"- **Validation Set:** {dataset_info.get('val_samples', 'N/A')} ({dataset_info.get('val_percentage', 'N/A')}%)\n\n")
+        
+        f.write("## Training Configuration\n\n")
+        train_config = results_dict.get('training_config', {})
+        f.write(f"- **Epochs:** {train_config.get('num_epochs', 'N/A')}\n")
+        f.write(f"- **Batch Size:** {train_config.get('batch_size', 'N/A')}\n")
+        f.write(f"- **Learning Rate:** {train_config.get('learning_rate', 'N/A')}\n")
+        f.write(f"- **Weight Decay:** {train_config.get('weight_decay', 'N/A')}\n")
+        f.write(f"- **Warmup Steps:** {train_config.get('warmup_steps', 'N/A')}\n")
+        f.write(f"- **Max Length:** {train_config.get('max_length', 'N/A')}\n")
+        f.write(f"- **Mixed Precision (FP16):** {train_config.get('fp16', 'N/A')}\n\n")
+        
+        f.write("## Evaluation Results\n\n")
+        eval_results = results_dict.get('evaluation_results', {})
+        accuracy = eval_results.get('accuracy', 'N/A')
+        f1 = eval_results.get('f1', 'N/A')
+        loss = eval_results.get('loss', 'N/A')
+        f.write(f"- **Accuracy:** {accuracy:.4f if isinstance(accuracy, (int, float)) else accuracy}\n")
+        f.write(f"- **F1 Score:** {f1:.4f if isinstance(f1, (int, float)) else f1}\n")
+        f.write(f"- **Validation Loss:** {loss:.4f if isinstance(loss, (int, float)) else loss}\n\n")
+        
+        f.write("## Test Inference Examples\n\n")
+        test_examples = results_dict.get('test_examples', [])
+        for i, example in enumerate(test_examples, 1):
+            f.write(f"### Example {i}\n\n")
+            f.write(f"**Text:** {example.get('text', 'N/A')}\n\n")
+            f.write(f"**Prediction:** {example.get('prediction', 'N/A')}\n\n")
+            confidence = example.get('confidence', 'N/A')
+            prob_fake = example.get('prob_fake', 'N/A')
+            prob_true = example.get('prob_true', 'N/A')
+            f.write(f"**Confidence:** {confidence:.4f if isinstance(confidence, (int, float)) else confidence}\n\n")
+            f.write(f"**Probabilities:**\n")
+            f.write(f"- FAKE: {prob_fake:.4f if isinstance(prob_fake, (int, float)) else prob_fake}\n")
+            f.write(f"- TRUE: {prob_true:.4f if isinstance(prob_true, (int, float)) else prob_true}\n\n")
+        
+        f.write("## Model Output\n\n")
+        f.write(f"- **Model Saved To:** {results_dict.get('model_output_dir', 'N/A')}\n\n")
+        
+        f.write("---\n\n")
+        f.write(f"*Results generated on {results_dict.get('training_date', 'N/A')}*\n")
+
 def main():
     """Main training pipeline."""
+    # Setup output file
+    output_file_handle, output_file_path = setup_output_file()
+    
+    # Redirect stdout to both console and file
+    original_stdout = sys.stdout
+    sys.stdout = Tee(original_stdout, output_file_handle)
+    
+    # Initialize results dictionary
+    results = {
+        'training_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'model_name': 'microsoft/mdeberta-v3-base',
+        'test_examples': []
+    }
+    
     print("\n" + "=" * 70)
     print("mDeBERTa-v3 Multilingual Fake News Detection")
     print("=" * 70)
     
     # Step 1: Load and preprocess datasets
     train_df, val_df = combine_and_preprocess_datasets()
+    
+    # Store dataset info
+    combined_df = pd.concat([train_df, val_df], ignore_index=True)
+    results['dataset_info'] = {
+        'total_samples': len(combined_df),
+        'kannada_samples': len(combined_df[combined_df['language']=='kannada']),
+        'english_samples': len(combined_df[combined_df['language']=='english']),
+        'fake_samples': len(combined_df[combined_df['label']==0]),
+        'true_samples': len(combined_df[combined_df['label']==1]),
+        'train_samples': len(train_df),
+        'val_samples': len(val_df),
+        'train_percentage': round(len(train_df)/len(combined_df)*100, 1),
+        'val_percentage': round(len(val_df)/len(combined_df)*100, 1)
+    }
     
     # Step 2: Load tokenizer and model
     print("\n" + "=" * 70)
@@ -231,6 +353,7 @@ def main():
     print("Setting Up Training Arguments")
     print("=" * 70)
     
+    max_length = 256
     training_args = TrainingArguments(
         output_dir="./training_output",
         num_train_epochs=3,
@@ -251,6 +374,17 @@ def main():
         report_to="none",
         seed=42
     )
+    
+    # Store training configuration
+    results['training_config'] = {
+        'num_epochs': training_args.num_train_epochs,
+        'batch_size': training_args.per_device_train_batch_size,
+        'learning_rate': training_args.learning_rate,
+        'weight_decay': training_args.weight_decay,
+        'warmup_steps': training_args.warmup_steps,
+        'max_length': max_length,
+        'fp16': training_args.fp16
+    }
     
     # Data collator for dynamic padding
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
@@ -288,6 +422,13 @@ def main():
     print(f"  F1 Score: {eval_results['eval_f1']:.4f}")
     print(f"  Loss: {eval_results['eval_loss']:.4f}")
     
+    # Store evaluation results
+    results['evaluation_results'] = {
+        'accuracy': eval_results['eval_accuracy'],
+        'f1': eval_results['eval_f1'],
+        'loss': eval_results['eval_loss']
+    }
+    
     # Step 8: Save model and tokenizer
     print("\n" + "=" * 70)
     print("Saving Model")
@@ -300,6 +441,9 @@ def main():
     tokenizer.save_pretrained(output_dir)
     
     print(f"Model and tokenizer saved to: {output_dir}/")
+    
+    # Store model output directory
+    results['model_output_dir'] = output_dir
     
     # Step 9: Test inference
     print("\n" + "=" * 70)
@@ -339,10 +483,30 @@ def main():
         print(f"  Text: {example}")
         print(f"  Prediction: {label_name} (confidence: {confidence:.4f})")
         print(f"  Probabilities: FAKE={predictions[0][0]:.4f}, TRUE={predictions[0][1]:.4f}")
+        
+        # Store test example results
+        results['test_examples'].append({
+            'text': example,
+            'prediction': label_name,
+            'confidence': confidence,
+            'prob_fake': predictions[0][0].item(),
+            'prob_true': predictions[0][1].item()
+        })
     
     print("\n" + "=" * 70)
     print("Training Complete!")
     print("=" * 70)
+    
+    # Restore stdout before saving markdown
+    sys.stdout = original_stdout
+    
+    # Save results to markdown file
+    output_md_path = Path(__file__).parent / "output.md"
+    save_results_to_markdown(results, output_md_path)
+    print(f"\nResults saved to: {output_md_path}")
+    
+    # Close the output file handle
+    output_file_handle.close()
 
 if __name__ == "__main__":
     main()
