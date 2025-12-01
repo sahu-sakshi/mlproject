@@ -8,4 +8,5 @@ pandas>=2.0.0
 numpy>=1.24.0
 tqdm>=4.66.0
 sentencepiece>=0.1.99
+psutil>=5.9.0
 
